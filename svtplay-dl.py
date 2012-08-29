@@ -15,9 +15,14 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-import urllib2, sys, getopt, os
+import os
+import sys
+import getopt
+import urllib
+import urllib2
+import urlparse
+import json
 from os.path import basename
-from BeautifulSoup import BeautifulSoup
 
 
 def which(program_name):
@@ -27,6 +32,16 @@ def which(program_name):
             return abs_path
     return None
 
+def add_to_qs(url, kvs):
+    u = list(urlparse.urlparse(url))
+    qs = dict(urlparse.parse_qsl(u[4]))
+    qs.update(kvs)
+    u[4] = urllib.urlencode(qs)
+
+    # urlparse discards params with no value - hopefully, this should not be a
+    # problem
+
+    return urlparse.urlunparse(u)
 
 
 def usage():
@@ -59,7 +74,7 @@ def main():
             do_download = True
             output_path = v
 
-    url = args[0]
+    url = add_to_qs(args[0], {'output': 'json'})
 
     page_contents = None
     try:
@@ -68,14 +83,11 @@ def main():
         sys.stderr.write('Error while fetching page: ' + str(e) + '\n')
         return 1
 
-    soup = BeautifulSoup(page_contents)
+    j = json.loads(page_contents)
+    video_links = j['video']['videoReferences']
+    video_links.sort(key = lambda x: x['bitrate'], reverse=True)
 
-    rtmp_link = soup.find('a', {'class': 'external-player'})
-    if not rtmp_link:
-        sys.stderr.write('Error: No rtmp url found\n')
-        return 1
-    
-    rtmp_url = rtmp_link.get('href')
+    rtmp_url = video_links[0]['url']
 
     if do_download:
         if which('rtmpdump') != None:
